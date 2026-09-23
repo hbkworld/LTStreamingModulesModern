@@ -319,6 +319,7 @@ void WsStreamingServer::onComponentAdded(
 {
     // openDAQ holds the changed component's lock while core event handlers run, so scanning
     // from the root here deadlocks against a thread holding any other device's lock.
+    // The sender is the parent the component was added to, so its subtree covers the new child.
     if (auto folder = component.asPtrOrNull<daq::IFolder>(); folder.assigned())
         rescan(folder);
 }
@@ -334,7 +335,16 @@ void WsStreamingServer::onComponentUpdateEnd(
     ComponentPtr& component,
     CoreEventArgsPtr& args)
 {
-    if (auto signal = component.asPtrOrNull<daq::ISignal>(); signal.assigned())
+    // Core events are muted for the whole subtree while it updates, so this is the only
+    // notification that anything below the component changed. An update both adds and
+    // removes signals.
+    if (auto folder = component.asPtrOrNull<daq::IFolder>(); folder.assigned())
+    {
+        pruneRemovedSignals();
+        rescan(folder);
+    }
+
+    else if (auto signal = component.asPtrOrNull<daq::ISignal>(); signal.assigned())
         createListener(signal);
 }
 
